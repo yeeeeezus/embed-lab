@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>embed-lab — semantic search in your browser</title>
+<meta name="description" content="Local-only semantic search: paste your notes, ask a query, get passages ranked by meaning. Embeddings computed in your browser with transformers.js — nothing leaves the page.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f8fa;--card:#fff;--border:#d8dee4;--text:#1f2328;--muted:#57606a;--accent:#1f6feb;--accent-d:#1a5fc8;--ok:#1a7f37;--mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:44px 20px 72px}
+h1{font-size:24px;letter-spacing:-.02em;margin:0}
+.sub{color:var(--muted);font-size:14px;margin:6px 0 0;max-width:62ch}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-top:22px}
+.card h2{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 14px}
+textarea,input[type=text]{font:inherit;border:1px solid var(--border);border-radius:6px;padding:9px 12px;background:#fff;color:var(--text);width:100%}
+textarea{min-height:180px;resize:vertical;font-size:14px}
+button{font:inherit;font-weight:600;border:none;border-radius:6px;padding:9px 18px;background:var(--accent);color:#fff;cursor:pointer}
+button:hover{background:var(--accent-d)}
+button:disabled{opacity:.45;cursor:default}
+.badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:10px;background:#eff2f5;color:var(--muted)}
+.badge.gpu{background:#dafbe1;color:var(--ok)}
+.progress{height:6px;border-radius:3px;background:#eef1f4;margin-top:14px;overflow:hidden}
+.progress>div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.status{font-size:13px;color:var(--muted);margin-top:8px;min-height:20px}
+.devrow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.qrow{display:flex;gap:10px;margin-top:14px}
+.qrow input{flex:1}
+.res{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:10px;background:#fff}
+.res .meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:6px}
+.res .txt{font-size:14px;line-height:1.6}
+.simbar{height:6px;border-radius:3px;background:#eef1f4;margin-top:8px;overflow:hidden}
+.simbar>div{height:100%;border-radius:3px;background:var(--accent);width:0;transition:width .3s}
+table.matrix{border-collapse:collapse;margin-top:10px;font-family:var(--mono);font-size:10.5px}
+table.matrix td{border:1px solid var(--border);width:26px;height:20px;text-align:center;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.4)}
+.pairbox{margin-top:10px;font-family:var(--mono);font-size:13px}
+.pairbox .score{font-size:22px;font-weight:700;color:var(--accent)}
+.note{font-size:13px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:22px}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12.5px}
+.tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.tabs button{background:#fff;color:var(--text);border:1px solid var(--border);padding:6px 14px;font-size:13px;font-weight:500}
+.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.samp{font-size:12.5px;color:var(--accent);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>embed-lab</h1>
+  <p class="sub">Semantic search over your own notes — entirely in your browser. Paste any set of passages, ask questions in plain words, and get results ranked by meaning, not keywords. Embeddings are computed locally; the text never leaves the page.</p>
+</header>
+
+<section class="card">
+  <h2>Model</h2>
+  <div class="devrow">
+    <div style="flex:1">all-MiniLM-L6-v2 · 384-dim sentence embeddings</div>
+    <span class="badge" id="devbadge">detecting device…</span>
+  </div>
+  <div class="progress"><div id="bar"></div></div>
+  <div class="status" id="status">~23 MB one-time download, cached by your browser afterwards.</div>
+</section>
+
+<section class="card">
+  <h2>Corpus</h2>
+  <textarea id="corpus" spellcheck="false" placeholder="One passage per blank-line-separated block (or per line in line mode)."></textarea>
+  <div class="devrow" style="margin-top:10px">
+    <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="linemode"> split by single lines instead of blank lines
+    </label>
+    <span class="samp" id="loadsample">load sample corpus</span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Query</h2>
+  <div class="tabs">
+    <button id="tab-search" class="active" type="button">Search</button>
+    <button id="tab-pair" type="button">Compare two texts</button>
+    <button id="tab-matrix" type="button">Similarity matrix</button>
+  </div>
+  <div id="pane-search">
+    <div class="qrow">
+      <input type="text" id="query" placeholder="e.g. what did we decide about caching?" spellcheck="false">
+      <button id="searchbtn" type="button">Search</button>
+    </div>
+    <div id="results"></div>
+  </div>
+  <div id="pane-pair" style="display:none">
+    <textarea id="pa" rows="3" spellcheck="false" placeholder="First text"></textarea>
+    <textarea id="pb" rows="3" style="margin-top:10px" spellcheck="false" placeholder="Second text"></textarea>
+    <div style="margin-top:12px"><button id="pairbtn" type="button">Compare</button></div>
+    <div class="pairbox" id="pairout" style="display:none"></div>
+  </div>
+  <div id="pane-matrix" style="display:none">
+    <div style="margin-bottom:10px"><button id="matrixbtn" type="button">Build matrix</button></div>
+    <div id="matrixout"></div>
+  </div>
+</section>
+
+<div class="note">
+  How it works: every passage and the query are mapped to 384-dimensional vectors by a sentence-transformer model running locally (mean-pooled, L2-normalized). Results are ranked by cosine similarity, which captures meaning — "the meeting about hiring" matches "we decided to postpone recruitment" even though they share no keyword. Server-side multimodal embedders exist for production scale; this page proves the whole idea works with zero infrastructure, zero cost, and zero data exposure. Clearing your browser storage removes the cached model; your text is never stored anywhere.
+</div>
+
+<footer>
+  Runtime: <a href="https://github.com/huggingface/transformers.js">transformers.js</a> (Apache-2.0) · model: <a href="https://huggingface.co/Xenova/all-MiniLM-L6-v2">all-MiniLM-L6-v2</a> (Apache-2.0) · built by <a href="https://github.com/yeeeeezus">yeeeeezus</a>.
+</footer>
+</div>
+
+<script type="module">
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0';
+
+env.allowLocalModels = false;
+
+const $ = id => document.getElementById(id);
+let extractor = null;
+let DEVICE = 'wasm';
+
+const SAMPLE = `The team decided to postpone the recruitment drive until Q3 because the budget review is not finished.
+
+We ship on Fridays unless a release blocker is open; hotfixes can go out any day.
+
+The caching layer reduced median API latency from 340 ms to 61 ms in the load test.
+
+Onboarding docs live in the handbook repo; anything not written there does not exist.
+
+Passwords must be at least 12 characters and checked against the breach corpus before storage.
+
+The outage on the 14th was caused by an expired TLS certificate on the edge proxy, not the database.`;
+
+(async () => {
+  try {
+    if (navigator.gpu) {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) DEVICE = 'webgpu';
+    }
+  } catch (e) {}
+  $('devbadge').textContent = DEVICE === 'webgpu' ? 'WebGPU' : 'CPU · WASM';
+  $('devbadge').className = 'badge' + (DEVICE === 'webgpu' ? ' gpu' : '');
+})();
+
+function progress_cb(e){
+  if (e.status === 'initiate') $('status').textContent = 'Starting download: ' + e.file;
+  else if (e.status === 'progress' && e.total){
+    const pct = Math.min(100, Math.round(e.progress || (e.loaded / e.total * 100)));
+    $('bar').style.width = pct + '%';
+    $('status').textContent = 'Downloading ' + e.file + ' — ' + (e.loaded/1048576).toFixed(1) + ' / ' + (e.total/1048576).toFixed(1) + ' MB';
+  } else if (e.status === 'done') $('bar').style.width = '100%';
+  else if (e.status === 'ready') $('status').textContent = 'Model ready on ' + (DEVICE === 'webgpu' ? 'WebGPU' : 'CPU (WASM)');
+}
+
+async function getModel(){
+  if (extractor) return extractor;
+  $('status').textContent = 'Loading model…';
+  const load = (device) => pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+    dtype: 'q8', device, progress_callback: progress_cb
+  });
+  try { extractor = await load(DEVICE); }
+  catch (err) {
+    $('devbadge').textContent = 'CPU · WASM (WebGPU failed)';
+    $('devbadge').className = 'badge';
+    DEVICE = 'wasm';
+    extractor = await load('wasm');
+  }
+  return extractor;
+}
+
+async function embed(texts){
+  const model = await getModel();
+  const out = await model(texts, { pooling: 'mean', normalize: true });
+  // FeatureExtractionPipeline with normalize returns a Tensor (dims [N,384])
+  const data = out.data || out;
+  const dim = out.dims ? out.dims[out.dims.length - 1] : (data.length / texts.length);
+  const res = [];
+  for (let i = 0; i < texts.length; i++) res.push(Array.from(data.slice(i * dim, (i + 1) * dim)));
+  return res;
+}
+
+function cos(a, b){
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];   // both L2-normalized
+  return s;
+}
+
+function getPassages(){
+  const raw = $('corpus').value;
+  let parts;
+  if ($('linemode').checked){
+    parts = raw.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  } else {
+    parts = raw.split(/\n\s*\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+  return parts.slice(0, 40);   // hard cap for the matrix view
+}
+
+$('loadsample').addEventListener('click', () => { $('corpus').value = SAMPLE; });
+
+/* ---------------- tabs ---------------- */
+const tabs = { 'tab-search': 'pane-search', 'tab-pair': 'pane-pair', 'tab-matrix': 'pane-matrix' };
+Object.keys(tabs).forEach(id => $(id).addEventListener('click', () => {
+  Object.keys(tabs).forEach(t => { $(t).classList.toggle('active', t === id); $(tabs[t]).style.display = t === id ? 'block' : 'none'; });
+}));
+
+function simColor(s){
+  const t = Math.max(0, Math.min(1, (s + 1) / 2));
+  const a = 0.08 + 0.82 * t;
+  return 'rgba(31,111,235,' + a.toFixed(3) + ')';
+}
+
+/* ---------------- search ---------------- */
+$('searchbtn').addEventListener('click', async () => {
+  const q = $('query').value.trim();
+  const parts = getPassages();
+  if (!q || !parts.length){ $('results').innerHTML = '<div class="status">Need a query and at least one passage in the corpus.</div>'; return; }
+  $('searchbtn').disabled = true;
+  $('results').innerHTML = '<div class="status">Embedding ' + (parts.length + 1) + ' texts…</div>';
+  const t0 = performance.now();
+  try {
+    const vecs = await embed([q, ...parts]);
+    const qv = vecs[0];
+    const scored = parts.map((text, i) => ({ text, sim: cos(qv, vecs[i + 1]) })).sort((a, b) => b.sim - a.sim);
+    const dt = ((performance.now() - t0) / 1000).toFixed(2);
+    $('results').innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'status';
+    head.textContent = parts.length + ' passages · ' + dt + ' s · ranked by cosine similarity';
+    $('results').appendChild(head);
+    scored.forEach((r, i) => {
+      const div = document.createElement('div');
+      div.className = 'res';
+      const pct = Math.max(0, Math.min(100, r.sim * 100));
+      div.innerHTML = '<div class="meta"><span>#' + (i + 1) + '</span><span>' + r.sim.toFixed(4) + '</span></div>'
+        + '<div class="txt"></div><div class="simbar"><div></div></div>';
+      div.querySelector('.txt').textContent = r.text;
+      $('results').appendChild(div);
+      requestAnimationFrame(() => { div.querySelector('.simbar > div').style.width = pct.toFixed(1) + '%'; });
+    });
+  } catch (err) {
+    $('results').innerHTML = '<div class="status">Error: ' + (err && err.message ? err.message : String(err)) + '</div>';
+  } finally {
+    $('searchbtn').disabled = false;
+  }
+});
+
+/* ---------------- pair compare ---------------- */
+$('pairbtn').addEventListener('click', async () => {
+  const a = $('pa').value.trim(), b = $('pb').value.trim();
+  if (!a || !b){ $('pairout').style.display = 'none'; return; }
+  $('pairbtn').disabled = true;
+  $('pairout').style.display = 'block';
+  $('pairout').textContent = 'Embedding…';
+  try {
+    const vecs = await embed([a, b]);
+    const s = cos(vecs[0], vecs[1]);
+    let band = 'unrelated';
+    if (s > 0.85) band = 'near-paraphrase';
+    else if (s > 0.65) band = 'same topic';
+    else if (s > 0.4) band = 'loosely related';
+    else if (s > 0.15) band = 'mostly unrelated';
+    $('pairout').innerHTML = '<span class="score">' + s.toFixed(4) + '</span> cosine similarity — ' + band
+      + '<div class="status" style="margin-top:6px">Guides for this model: &gt;0.85 paraphrase-scale, 0.6–0.85 same topic, &lt;0.3 usually unrelated. Small models are noisy on very short texts.</div>';
+  } catch (err) {
+    $('pairout').textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+  } finally {
+    $('pairbtn').disabled = false;
+  }
+});
+
+/* ---------------- matrix ---------------- */
+$('matrixbtn').addEventListener('click', async () => {
+  const parts = getPassages();
+  if (parts.length < 2){ $('matrixout').innerHTML = '<div class="status">Need at least two passages.</div>'; return; }
+  $('matrixbtn').disabled = true;
+  $('matrixout').innerHTML = '<div class="status">Embedding ' + parts.length + ' passages…</div>';
+  try {
+    const vecs = await embed(parts);
+    const sims = vecs.map(a => vecs.map(b => cos(a, b)));
+    let html = '<table class="matrix"><tr><td></td>';
+    for (let j = 0; j < parts.length; j++) html += '<td style="border:none;background:#fff;text-shadow:none;color:var(--muted)">' + (j + 1) + '</td>';
+    html += '</tr>';
+    for (let i = 0; i < parts.length; i++){
+      html += '<tr><td style="border:none;background:#fff;text-shadow:none;color:var(--muted)">' + (i + 1) + '</td>';
+      for (let j = 0; j < parts.length; j++){
+        const s = sims[i][j];
+        html += '<td style="background:' + simColor(s) + '" title="' + i + ',' + j + ': ' + s.toFixed(3) + '">' + (i === j ? '·' : s.toFixed(2).replace(/^0/, '')) + '</td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table><div class="status">Numbers are cosine similarity (0.9 ≈ same meaning). Darker blue = more similar. Max 40 passages.</div>';
+    const ol = document.createElement('div');
+    ol.className = 'status';
+    ol.style.marginTop = '8px';
+    ol.innerHTML = parts.map((p, i) => '<div><strong>' + (i + 1) + '.</strong> ' + p.slice(0, 90).replace(/</g, '&lt;') + (p.length > 90 ? '…' : '') + '</div>').join('');
+    $('matrixout').innerHTML = html;
+    $('matrixout').appendChild(ol);
+  } catch (err) {
+    $('matrixout').innerHTML = '<div class="status">Error: ' + (err && err.message ? err.message : String(err)) + '</div>';
+  } finally {
+    $('matrixbtn').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
